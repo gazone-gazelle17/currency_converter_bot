@@ -1,3 +1,4 @@
+#  Здесь центральная логика бота
 # import logging  # Почитай об этом попозже (уровни и т.д.)
 import os
 from dotenv import load_dotenv
@@ -9,16 +10,16 @@ from telegram.ext import (
     )
 from telegram.utils.request import Request
 
-
+from database import DataBase
 import messages
 
 
 NAME, SURNAME, AGE = range(3)
 
 USER_INFO = {
-    'name': None,     # это потом нужно заменить:
-    'surname': None,  # либо будем брать из контекста
-    'age': None       # либо из БД
+    'name': None,
+    'surname': None,
+    'age': None
 }
 
 
@@ -52,17 +53,37 @@ def get_age(update: Update, context: CallbackContext):
 def return_info_msg(update: Update, context: CallbackContext):
     """Финальная функция для вывода информации о пользователе."""
 
+    db = DataBase()
     chat = update.effective_chat
     age = update.message.text
     USER_INFO['age'] = age
-    info_message = messages.INFO_MESSAGE.format(
-        name=USER_INFO['name'],
-        surname=USER_INFO['surname'],
-        age=USER_INFO['age'],
-        id=update.message.chat.id
-    )
-    context.bot.send_message(chat_id=chat.id, text=info_message)
-    return ConversationHandler.END
+
+    try:
+        if db.check_if_user_exists(update.message.chat.id):
+            return already_user(update, context)
+        else:
+            info_message = messages.INFO_MESSAGE.format(
+                name=USER_INFO['name'],
+                surname=USER_INFO['surname'],
+                age=USER_INFO['age'],
+                id=update.message.chat.id
+            )
+            db.add_new_user(
+                name=USER_INFO['name'],
+                surname=USER_INFO['surname'],
+                age=USER_INFO['age'],
+                tg_id=update.message.chat.id
+            )
+            USER_INFO.clear()
+            db.close_connection()
+            context.bot.send_message(chat_id=chat.id, text=info_message)
+            return ConversationHandler.END
+
+    except Exception as ex:
+        print("[INFO] Error:", ex)
+        error_message = messages.ERROR_MESSAGE
+        context.bot.send_message(chat_id=chat.id, text=error_message)
+        return ConversationHandler.END
 
 
 def say_hi(update: Update, context: CallbackContext):
@@ -74,7 +95,14 @@ def say_hi(update: Update, context: CallbackContext):
 
 
 def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text('Отмена. Для начала с нуля нажмите /start')
+    """Отмена действий."""
+    update.message.reply_text(messages.CANCEL_MESSAGE)
+    return ConversationHandler.END
+
+
+def already_user(update: Update, context: CallbackContext):
+    """Если пользователь уже существует."""
+    update.message.reply_text(messages.ALREADY_USER_MESSAGE)
     return ConversationHandler.END
 
 
